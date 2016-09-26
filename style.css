@@ -1,0 +1,53 @@
+
+.quiz-set {
+  padding: 1em;
+}
+
+.result {
+    border-width: 0.15em;
+    border-style: solid;
+    border-top-color: #888888;
+    border-left-color: #888888;
+    border-bottom-color: #dddddd;
+    border-right-color: #dddddd;
+    border-radius: 0.5em;
+    margin: 0.3em;
+    padding: 0.3em;
+}
+
+.result-true {
+    background-color: #aaee88;
+}
+
+.result-false {
+    background-color: #ee88aa;
+}
+
+.button {
+    background-color: #cccccc;
+    border-width: 0.15em;
+    border-style: solid;
+    border-top-color: #dddddd;
+    border-left-color: #dddddd;
+    border-bottom-color: #888888;
+    border-right-color: #888888;
+    border-radius: 0.5em;
+    margin: 0.3em;
+    padding: 0.3em;
+    cursor: pointer;
+}
+
+.button:hover {
+    background-color: #d5d5d5;
+}
+
+.button:active {
+    border-top-color: #888888;
+    border-left-color: #888888;
+    border-bottom-color: #dddddd;
+    border-right-color: #dddddd;
+}
+
+body {
+    background-color: #cccccc;
+}
