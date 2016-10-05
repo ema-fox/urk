@@ -10,9 +10,12 @@ for (let i = 0; i < 100; i++) {
 }
 
 let points = 0;
+let inventar = new Map();
 
+let max_enemy_health = 20;
 let enemy_health = 20;
-let player_health = 100;
+let player_health = 90;
+let explored = 0;
 
 function rand(a) {
     return Math.floor(Math.random() * a);
@@ -20,6 +23,11 @@ function rand(a) {
 
 function rand_choice(xs) {
     return xs[rand(xs.length)];
+}
+
+function chance(a, b) {
+    b = b || 1;
+    return !(Math.random() < Math.pow(1 - a, b))
 }
 
 function decrease_enemy_health(amount) {
@@ -30,6 +38,59 @@ function decrease_enemy_health(amount) {
 function decrease_player_health(amount) {
     player_health -= amount;
     document.getElementById('player-health').value = player_health;
+}
+
+function increase_explored(amount) {
+    explored += amount;
+    document.getElementById('explored').value = explored;
+}
+
+function show_inventar() {
+    let iel = document.getElementById('inventar');
+    iel.innerHTML = '';
+    for (let [type, amount] of inventar) {
+        let bla = document.createElement('div');
+        bla.innerText = type + ': ' + amount;
+        iel.insertBefore(bla, null);
+    }
+}
+
+function loot_foo(xs) {
+    let loot = new Map();
+    xs.forEach(([name, c, max]) => {
+        if (chance(c)) {
+            loot.set(name, rand(max) + 1);
+        }
+    });
+    return loot;
+}
+
+function generate_loot() {
+    return loot_foo([['gold', 1, 7],
+                     ['arrows', 0.5, 9],
+                     ['shoes', 0.3, 2]]);
+}
+
+function generate_found_loot() {
+    return loot_foo([['wood', 0.6, 6],
+                     ['gold', 0.2, 3],
+                     ['pumpkin spice', 0.1, 1]]);
+}
+
+function merge_with(dest, source, default_value, f) {
+    for (let [key, val] of source) {
+        dest.set(key, f(dest.has(key) ? dest.get(key) : default_value, val));
+    }
+}
+
+function add_loot(loot) {
+    merge_with(inventar, loot, 0, (a, b) => a + b);
+    show_inventar();
+}
+
+function add_inventar(type, amount) {
+    inventar.set(type, (inventar.get(type) || 0) + amount);
+    show_inventar();
 }
 
 function add_points(amount) {
@@ -62,14 +123,12 @@ function shuffle(xs) {
     }
 }
 
-function create_button(text) {
+function create_button(text, cb) {
     let button = document.createElement('div');
-    let p = new Promise((resolve, reject) => {
-        button.className = 'button';
-        button.innerText = text;
-        button.addEventListener('click', () => resolve());
-    });
-    return [button, p];
+    button.className = 'button';
+    button.innerText = text;
+    button.addEventListener('click', cb);
+    return button;
 }
 
 function ask_quiz_set(set) {
@@ -83,30 +142,21 @@ function ask_quiz_set(set) {
         q.innerText = qx[0];
         container.insertBefore(q, null);
         xs.forEach(x => {
-            let [button, p] = create_button(x[1]);
-            container.insertBefore(button, null);
-            p.then(() => resolve(answer(qx, x)));
+            container.insertBefore(create_button(x[1], () => resolve(answer(qx, x))), null);
         });
-        let [button, p] = create_button('None of the above');
-        p.then(() => {
+        container.insertBefore(create_button('None of the above', () => {
             if (set.next) {
                 resolve(ask_quiz_set(set.next));
             } else {
                 resolve(answer(qx, null));
             }
-        });
-        container.insertBefore(button, null);
+        }), null);
         show(container);
     });
 }
 
 function show_next(el) {
-    let container = document.createElement('div');
-    container.insertBefore(el, null);
-    let [button, p] = create_button('next');
-    container.insertBefore(button, null);
-    show(container);
-    return p;
+    return new Promise((resolve, reject) => show([el, create_button('next', resolve)]));
 }
 
 
@@ -116,19 +166,21 @@ function show_msg(msg) {
     return show_next(msgfoo);
 }
 
-function render_quiz_set_question(q) {
-    let [button, p] = create_button(q.q.q[0]);
-    return [button, p.then(() => {
-        return ask_quiz_set(q.q).then(success => {
+function render_quiz_set_question(q, cb) {
+    return create_button(q.q.q[0], () => {
+        ask_quiz_set(q.q).then(success => {
             q.q = get_quiz_set(sentences);
-            return success;
+            cb(success);
         });
-    })];
+    });
 }
 
-function show(el) {
+function show(els) {
+    if (!els.forEach) {
+        els = [els];
+    }
     document.getElementById('workarea').innerHTML = '';
-    document.getElementById('workarea').insertBefore(el, null);
+    els.forEach(el => document.getElementById('workarea').insertBefore(el, null));
 }
 
 function create_questions() {
@@ -144,13 +196,7 @@ var live_qs = create_questions();
 
 function show_questions() {
     return new Promise((resolve, reject) => {
-        var container = document.createElement('div');
-        live_qs.forEach(q => {
-            let [el, p] = render_quiz_set_question(q);
-            container.insertBefore(el, null);
-            p.then(resolve);
-        });
-        show(container);
+        show(live_qs.map(q => render_quiz_set_question(q, resolve)));
     });
 }
 
@@ -176,13 +222,79 @@ function start_quiz() {
     });
 }
 
-window.addEventListener('load', () => {
-    document.getElementById('title').innerText = 'Fighting ' + rand_choice(prefixes) + rand_choice(names) + rand_choice(postfixes);
-    start_quiz().then(success => {
+function start_fight() {
+    document.getElementById('title').innerText = 'Fighting ' + rand_choice(prefixes) + rand_choice(names) + rand_choice(postfixes) + "\n Enemy health: ";
+    enemy_health = max_enemy_health;
+    let prog = document.createElement('progress');
+    prog.id = 'enemy-health';
+    prog.max = max_enemy_health;
+    prog.value = enemy_health;
+    document.getElementById('title').insertBefore(prog, null);
+    return start_quiz().then(success => {
+        document.getElementById('title').innerHTML = '';
         if (success) {
+            add_loot(generate_loot());
             return show_msg('You win!');
         } else {
             return show_msg('You die!');
         }
-    }).then(() => show(document.createElement('div')));
+    });
+}
+
+function start_heal() {
+    if (player_health >= 100) {
+        return show_msg("You're fully healed");
+    } else {
+        return show_questions().then(success => decrease_player_health(success ? -8 : -2)).then(start_heal);
+    }
+}
+
+function found_stuff() {
+    let loot = generate_found_loot();
+    add_loot(loot);
+    return show_msg("found loot");
+}
+
+function explore() {
+    return show_questions().then(success => {
+        let amount = success ? 8 : 2;
+        increase_explored(amount);
+        if (explored >= 100) {
+            return show_msg('explored everything!');
+        }
+        if (chance(0.06, amount)) {
+            return start_fight();
+        } else if (chance(0.1, amount)) {
+            return found_stuff();
+        } else {
+            return explore();
+        }
+    });
+}
+
+function craft_crafting_table() {
+    return show_questions().then(success => {
+        if (success) {
+            let foo = new Map();
+            foo.set('wood', -4);
+            foo.set('crafitng table', 1);
+            add_loot(foo);
+        } else {
+            return craft_crafting_table();
+        }
+    });
+}
+
+function menu() {
+    if (player_health > 0 || explored < 100) {
+        show([create_button('explore', () => explore().then(menu)),
+              create_button('heal', () => start_heal().then(menu))].concat(
+                  inventar.get('wood') >= 4 ? [create_button('craft crafting table', () => craft_crafting_table().then(menu))] : []));
+    } else {
+        show_msg("Game over");
+    }
+}
+
+window.addEventListener('load', () => {
+    menu();
 });
